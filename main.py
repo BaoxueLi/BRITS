@@ -45,7 +45,7 @@ def train(model):
 
             run_loss += ret['loss'].item()
 
-            print '\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0)),
+            print ('\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0)),)
 
         evaluate(model, data_iter)
 
@@ -91,14 +91,14 @@ def evaluate(model, val_iter):
     labels = np.asarray(labels).astype('int32')
     preds = np.asarray(preds)
 
-    print 'AUC {}'.format(metrics.roc_auc_score(labels, preds))
+    print ('AUC {}'.format(metrics.roc_auc_score(labels, preds)))
 
     evals = np.asarray(evals)
     imputations = np.asarray(imputations)
 
-    print 'MAE', np.abs(evals - imputations).mean()
+    print ('MAE', np.abs(evals - imputations).mean())
 
-    print 'MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum()
+    print ('MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum())
 
     save_impute = np.concatenate(save_impute, axis=0)
     save_label = np.concatenate(save_label, axis=0)

@@ -1,4 +1,7 @@
 *.py[cod]
 json
 raw
+_raw
+raw_
+myraw
 result/*.npy

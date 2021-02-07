@@ -124,7 +124,7 @@ class Model(nn.Module):
         # only use training labels
         y_loss = torch.sum(y_loss * is_train) / (torch.sum(is_train) + 1e-5)
 
-        y_h = F.sigmoid(y_h)
+        y_h = torch.sigmoid(y_h)
 
         return {'loss': x_loss * self.impute_weight + y_loss * self.label_weight, 'predictions': y_h,\
                 'imputations': imputations, 'labels': labels, 'is_train': is_train,\

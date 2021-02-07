@@ -11,7 +11,7 @@ import utils
 import argparse
 import data_loader
 
-import rits
+from . import rits
 from sklearn import metrics
 
 from ipdb import set_trace

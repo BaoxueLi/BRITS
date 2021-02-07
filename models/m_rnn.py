@@ -167,7 +167,7 @@ class Model(nn.Module):
             x_h = self.hist_reg(h)
             x_f = self.feat_reg(x)
 
-            alpha = F.sigmoid(self.weight_combine(torch.cat([m, d], dim = 1)))
+            alpha = torch.sigmoid(self.weight_combine(torch.cat([m, d], dim = 1)))
 
             x_c = alpha * x_h + (1 - alpha)
 
@@ -196,7 +196,7 @@ class Model(nn.Module):
         y_loss = binary_cross_entropy_with_logits(y_h, labels, reduce = False)
         y_loss = torch.sum(y_loss * is_train) / (torch.sum(is_train) + 1e-5)
 
-        y_h = F.sigmoid(y_h)
+        y_h = torch.sigmoid(y_h)
 
 
         return {'loss': x_loss * self.impute_weight + y_loss * self.label_weight, 'predictions': y_h,\

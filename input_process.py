@@ -11,6 +11,8 @@ patient_ids = []
 for filename in os.listdir('./raw'):
     # the patient data in PhysioNet contains 6-digits
     match = re.search('\d{6}', filename)
+    # import ipdb
+    # ipdb.set_trace()
     if match:
         id_ = match.group()
         patient_ids.append(id_)
@@ -41,7 +43,7 @@ std = np.array(
      9.062327978713556, 106.50939503021543, 170.65318497610315, 14.856134327604906, 1.6369529387005546,
      133.96778334724377])
 
-fs = open('./json/json', 'w')
+# fs = open('./json/json', 'w')
 
 def to_time_bin(x):
     h, m = map(int, x.split(':'))
@@ -54,7 +56,8 @@ def parse_data(x):
     values = []
 
     for attr in attributes:
-        if x.has_key(attr):
+        if attr in x:
+        # if x.has_key(attr):
             values.append(x[attr])
         else:
             values.append(np.nan)
@@ -80,22 +83,27 @@ def parse_rec(values, masks, evals, eval_masks, dir_):
     deltas = parse_delta(masks, dir_)
 
     # only used in GRU-D
-    forwards = pd.DataFrame(values).fillna(method='ffill').fillna(0.0).as_matrix()
+    forwards = pd.DataFrame(values).fillna(method='ffill').fillna(0.0).values
+    # forwards = pd.DataFrame(values).fillna(method='ffill').fillna(0.0).as_matrix()
 
     rec = {}
 
     rec['values'] = np.nan_to_num(values).tolist()
-    rec['masks'] = masks.astype('int32').tolist()
+    # rec['masks'] = masks.astype('int32').tolist()
+    rec['masks'] = masks.astype('float64').tolist()
+    # import ipdb
+    # ipdb.set_trace()
     # imputation ground-truth
     rec['evals'] = np.nan_to_num(evals).tolist()
-    rec['eval_masks'] = eval_masks.astype('int32').tolist()
+    # rec['eval_masks'] = eval_masks.astype('int32').tolist()
+    rec['eval_masks'] = eval_masks.astype('float64').tolist()
     rec['forwards'] = forwards.tolist()
     rec['deltas'] = deltas.tolist()
 
     return rec
 
 
-def parse_id(id_):
+def parse_id(list_,id_):
     data = pd.read_csv('./raw/{}.txt'.format(id_))
     # accumulate the records within one hour
     data['Time'] = data['Time'].apply(lambda x: to_time_bin(x))
@@ -136,18 +144,22 @@ def parse_id(id_):
     rec['forward'] = parse_rec(values, masks, evals, eval_masks, dir_='forward')
     rec['backward'] = parse_rec(values[::-1], masks[::-1], evals[::-1], eval_masks[::-1], dir_='backward')
 
-    rec = json.dumps(rec)
+    list_.append(rec)
+    # rec = json.dumps(rec)
+    # import ipdb
+    # ipdb.set_trace()
+    # fs.write(rec + '\n')
 
-    fs.write(rec + '\n')
-
+data_list=[]
 
 for id_ in patient_ids:
     print('Processing patient {}'.format(id_))
+    # parse_id(data_list,id_)
     try:
-        parse_id(id_)
+        parse_id(data_list,id_)
     except Exception as e:
         print(e)
         continue
-
-fs.close()
+np.save('json/data.npy',np.array(data_list))
+# fs.close()
 
