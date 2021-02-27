@@ -121,14 +121,14 @@ def parse_id(list_,id_):
     evals = evals.reshape(-1)
 
     # randomly eliminate 10% values as the imputation ground-truth
-    indices = np.where(~np.isnan(evals))[0].tolist()
+    indices = np.where(~np.isnan(evals))[0].tolist() # eval里面不是缺失值的部分
     indices = np.random.choice(indices, len(indices) // 10)
 
-    values = evals.copy()
+    values = evals.copy() # (48,35)
     values[indices] = np.nan
 
     masks = ~np.isnan(values)
-    eval_masks = (~np.isnan(values)) ^ (~np.isnan(evals))
+    eval_masks = (~np.isnan(values)) ^ (~np.isnan(evals)) # 抑或
 
     evals = evals.reshape(shp)
     values = values.reshape(shp)
@@ -143,23 +143,23 @@ def parse_id(list_,id_):
     # prepare the model for both directions
     rec['forward'] = parse_rec(values, masks, evals, eval_masks, dir_='forward')
     rec['backward'] = parse_rec(values[::-1], masks[::-1], evals[::-1], eval_masks[::-1], dir_='backward')
-
+    import ipdb
+    ipdb.set_trace()
     list_.append(rec)
     # rec = json.dumps(rec)
-    # import ipdb
-    # ipdb.set_trace()
+
     # fs.write(rec + '\n')
 
 data_list=[]
 
 for id_ in patient_ids:
     print('Processing patient {}'.format(id_))
-    # parse_id(data_list,id_)
-    try:
-        parse_id(data_list,id_)
-    except Exception as e:
-        print(e)
-        continue
-np.save('json/data.npy',np.array(data_list))
+    parse_id(data_list,id_)
+    # try:
+    #     parse_id(data_list,id_)
+    # except Exception as e:
+    #     print(e)
+    #     continue
+# np.save('json/data.npy',np.array(data_list))
 # fs.close()
 

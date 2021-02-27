@@ -14,7 +14,7 @@ import argparse
 import data_loader
 import pandas as pd
 import ujson as json
-
+from utils import setup_seed
 from sklearn import metrics
 
 from ipdb import set_trace
@@ -24,6 +24,7 @@ parser.add_argument('--epochs', type=int, default=1000)
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--model', type=str)
 parser.add_argument('--hid_size', type=int)
+parser.add_argument('--input_size', type=int)
 parser.add_argument('--impute_weight', type=float)
 parser.add_argument('--label_weight', type=float)
 args = parser.parse_args()
@@ -77,7 +78,8 @@ def evaluate(model, val_iter):
         eval_masks = ret['eval_masks'].data.cpu().numpy()
         eval_ = ret['evals'].data.cpu().numpy()
         imputation = ret['imputations'].data.cpu().numpy()
-
+        # import ipdb
+        # ipdb.set_trace()
         evals += eval_[np.where(eval_masks == 1)].tolist()
         imputations += imputation[np.where(eval_masks == 1)].tolist()
 
@@ -91,7 +93,7 @@ def evaluate(model, val_iter):
     labels = np.asarray(labels).astype('int32')
     preds = np.asarray(preds)
 
-    print ('AUC {}'.format(metrics.roc_auc_score(labels, preds)))
+    # print ('AUC {}'.format(metrics.roc_auc_score(labels, preds)))
 
     evals = np.asarray(evals)
     imputations = np.asarray(imputations)
@@ -99,7 +101,9 @@ def evaluate(model, val_iter):
     print ('MAE', np.abs(evals - imputations).mean())
 
     print ('MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum())
-
+    print ('RMSE', np.sqrt(np.mean((evals-imputations)**2)))
+    # import ipdb
+    # ipdb.set_trace()
     save_impute = np.concatenate(save_impute, axis=0)
     save_label = np.concatenate(save_label, axis=0)
 
@@ -108,16 +112,18 @@ def evaluate(model, val_iter):
 
 
 def run():
-    model = getattr(models, args.model).Model(args.hid_size, args.impute_weight, args.label_weight)
+    model = getattr(models, args.model).Model(args.hid_size, args.impute_weight, args.label_weight,args.input_size)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('Total params is {}'.format(total_params))
 
     if torch.cuda.is_available():
         model = model.cuda()
+        print('Model is on GPU.')
 
     train(model)
 
-
+# python main.py --model brits --input_size 36 --epochs 1000 --batch_size 64 --impute_weight 0.3 --label_weight 0 --hid_size 108
 if __name__ == '__main__':
+    setup_seed(1)
     run()
 

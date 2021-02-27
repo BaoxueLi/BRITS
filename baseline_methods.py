@@ -8,15 +8,38 @@ X = []
 Y = []
 Z = []
 
-for ctx in open('json/json'):
-    z = json.loads(ctx)['label']
-    ctx = json.loads(ctx)['forward']
+# for ctx in open('json/json'):
+#     z = json.loads(ctx)['label']
+#     ctx = json.loads(ctx)['forward']
+#     x = np.asarray(ctx['values'])
+#     y = np.asarray(ctx['evals'])
+
+
+#     x_mask = np.asarray(ctx['masks']).astype(np.bool)
+#     y_mask = np.asarray(ctx['eval_masks']).astype(np.bool)
+
+#     x[~x_mask] = np.nan
+
+#     y[(~x_mask) & (~y_mask)] = np.nan
+
+#     X.append(x)
+#     Y.append(y)
+#     Z.append(int(z))
+
+content = np.load('coalmill-data-TS/data_D.npy',allow_pickle=True).tolist()
+len_content = len(content)
+
+for j in range(len_content):
+    z = content[j]['label']
+    # import ipdb
+    # ipdb.set_trace()
+    ctx = content[j]['forward']
     x = np.asarray(ctx['values'])
     y = np.asarray(ctx['evals'])
 
 
-    x_mask = np.asarray(ctx['masks']).astype(np.bool)
-    y_mask = np.asarray(ctx['eval_masks']).astype(np.bool)
+    x_mask = np.asarray(ctx['masks']).astype(bool)
+    y_mask = np.asarray(ctx['eval_masks']).astype(bool)
 
     x[~x_mask] = np.nan
 
@@ -25,6 +48,7 @@ for ctx in open('json/json'):
     X.append(x)
     Y.append(y)
     Z.append(int(z))
+
 
 def get_loss(X, X_pred, Y):
     # find ones in Y but not in X (ground truth)
@@ -36,8 +60,8 @@ def get_loss(X, X_pred, Y):
 
     mae = np.abs(pred - label).sum() / (1e-5 + np.sum(mask))
     mre = np.abs(pred - label).sum() / (1e-5 + np.sum(np.abs(label)))
-
-    return {'mae': mae, 'mre': mre}
+    rmse = np.sqrt(np.mean((pred-label)**2))
+    return {'mae': mae, 'mre': mre,'rmse': rmse}
 
 # Algo1: Mean imputation
 
@@ -46,21 +70,23 @@ X_mean = []
 print(len(X))
 
 for x, y in zip(X, Y):
-    X_mean.append(fancyimpute.SimpleFill().complete(x))
+    X_mean.append(fancyimpute.SimpleFill().fit_transform(x))
 
-X_c = np.concatenate(X, axis=0).reshape(-1, 48, 35)
-Y_c = np.concatenate(Y, axis=0).reshape(-1, 48, 35)
+X_c = np.concatenate(X, axis=0).reshape(-1, 100, 36)
+Y_c = np.concatenate(Y, axis=0).reshape(-1, 100, 36)
 Z_c = np.array(Z)
-X_mean = np.concatenate(X_mean, axis=0).reshape(-1, 48, 35)
+X_mean = np.concatenate(X_mean, axis=0).reshape(-1, 100, 36)
 
 print('Mean imputation:')
 print(get_loss(X_c, X_mean, Y_c))
 
 # save mean inputation results
 print(X_c.shape, Y_c.shape, Z_c.shape)
-raw_input()
+# raw_input()
 np.save('./result/mean_data.npy', X_mean)
 np.save('./result/mean_label.npy', Z_c)
+import ipdb
+ipdb.set_trace()
 
 # Algo2: KNN imputation
 
@@ -68,6 +94,7 @@ X_knn = []
 
 for x, y in zip(X, Y):
     X_knn.append(fancyimpute.KNN(k=10, verbose=False).complete(x))
+
 
 X_c = np.concatenate(X, axis=0)
 Y_c = np.concatenate(Y, axis=0)

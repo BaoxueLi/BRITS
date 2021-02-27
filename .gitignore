@@ -5,3 +5,6 @@ _raw
 raw_
 myraw
 result/*.npy
+coalmill-mask
+coalmill-data-*
+visual

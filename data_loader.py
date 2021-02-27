@@ -15,7 +15,8 @@ class MySet(Dataset):
         super(MySet, self).__init__()
         print('Loading data......')
         st_time = time.time()
-        self.content = np.load('./json/data.npy',allow_pickle=True).tolist()
+        # self.content = np.load('./json/data.npy',allow_pickle=True).tolist()
+        self.content = np.load('coalmill-data-TS/data_D.npy',allow_pickle=True).tolist()
         en_time = time.time()
         print('Successful load, time cosumed: {:.2f}s'.format(en_time-st_time))
         # self.content = open('./json/json').readlines()
@@ -60,27 +61,6 @@ def collate_fn(recs):
     ret_dict['is_train'] = torch.FloatTensor(list(map(lambda x: x['is_train'], recs)))
 
     return ret_dict
-    # forward = map(lambda x: x['forward'], recs)
-    # backward = map(lambda x: x['backward'], recs)
-
-    # def to_tensor_dict(recs):
-    #     values = torch.FloatTensor(map(lambda r: r['values'], recs))
-    #     masks = torch.FloatTensor(map(lambda r: r['masks'], recs))
-    #     deltas = torch.FloatTensor(map(lambda r: r['deltas'], recs))
-
-    #     evals = torch.FloatTensor(map(lambda r: r['evals'], recs))
-    #     eval_masks = torch.FloatTensor(map(lambda r: r['eval_masks'], recs))
-    #     forwards = torch.FloatTensor(map(lambda r: r['forwards'], recs))
-
-
-    #     return {'values': values, 'forwards': forwards, 'masks': masks, 'deltas': deltas, 'evals': evals, 'eval_masks': eval_masks}
-
-    # ret_dict = {'forward': to_tensor_dict(forward), 'backward': to_tensor_dict(backward)}
-
-    # ret_dict['labels'] = torch.FloatTensor(map(lambda x: x['label'], recs))
-    # ret_dict['is_train'] = torch.FloatTensor(map(lambda x: x['is_train'], recs))
-
-    # return ret_dict
 
 def get_loader(batch_size = 64, shuffle = True):
     data_set = MySet()
@@ -88,7 +68,7 @@ def get_loader(batch_size = 64, shuffle = True):
     # ipdb.set_trace()
     data_iter = DataLoader(dataset = data_set, \
                               batch_size = batch_size, \
-                              num_workers = 1, \
+                              num_workers = 0, \
                               shuffle = shuffle, \
                               pin_memory = True, \
                               collate_fn = collate_fn

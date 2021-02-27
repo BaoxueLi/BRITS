@@ -16,23 +16,24 @@ from sklearn import metrics
 
 from ipdb import set_trace
 
-SEQ_LEN = 48
+SEQ_LEN = 100
 RNN_HID_SIZE = 64
 
 
 class Model(nn.Module):
-    def __init__(self, rnn_hid_size, impute_weight, label_weight):
+    def __init__(self, rnn_hid_size, impute_weight, label_weight,input_size):
         super(Model, self).__init__()
 
         self.rnn_hid_size = rnn_hid_size
         self.impute_weight = impute_weight
         self.label_weight = label_weight
+        self.input_size = input_size
 
         self.build()
 
     def build(self):
-        self.rits_f = rits.Model(self.rnn_hid_size, self.impute_weight, self.label_weight)
-        self.rits_b = rits.Model(self.rnn_hid_size, self.impute_weight, self.label_weight)
+        self.rits_f = rits.Model(self.rnn_hid_size, self.impute_weight, self.label_weight,self.input_size)
+        self.rits_b = rits.Model(self.rnn_hid_size, self.impute_weight, self.label_weight,self.input_size)
 
     def forward(self, data):
         ret_f = self.rits_f(data, 'forward')

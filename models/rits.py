@@ -14,7 +14,7 @@ import data_loader
 from ipdb import set_trace
 from sklearn import metrics
 
-SEQ_LEN = 48
+SEQ_LEN = 100
 
 def binary_cross_entropy_with_logits(input, target, weight=None, size_average=True, reduce=True):
     if not (target.size() == input.size()):
@@ -90,25 +90,26 @@ class TemporalDecay(nn.Module):
         return gamma
 
 class Model(nn.Module):
-    def __init__(self, rnn_hid_size, impute_weight, label_weight):
+    def __init__(self, rnn_hid_size, impute_weight, label_weight,input_size):
         super(Model, self).__init__()
 
         self.rnn_hid_size = rnn_hid_size
         self.impute_weight = impute_weight
         self.label_weight = label_weight
+        self.input_size = input_size
 
         self.build()
 
     def build(self):
-        self.rnn_cell = nn.LSTMCell(35 * 2, self.rnn_hid_size)
+        self.rnn_cell = nn.LSTMCell(self.input_size * 2, self.rnn_hid_size)
 
-        self.temp_decay_h = TemporalDecay(input_size = 35, output_size = self.rnn_hid_size, diag = False)
-        self.temp_decay_x = TemporalDecay(input_size = 35, output_size = 35, diag = True)
+        self.temp_decay_h = TemporalDecay(input_size = self.input_size, output_size = self.rnn_hid_size, diag = False)
+        self.temp_decay_x = TemporalDecay(input_size = self.input_size, output_size = self.input_size, diag = True)
 
-        self.hist_reg = nn.Linear(self.rnn_hid_size, 35)
-        self.feat_reg = FeatureRegression(35)
+        self.hist_reg = nn.Linear(self.rnn_hid_size, self.input_size)
+        self.feat_reg = FeatureRegression(self.input_size)
 
-        self.weight_combine = nn.Linear(35 * 2, 35)
+        self.weight_combine = nn.Linear(self.input_size * 2, self.input_size)
 
         self.dropout = nn.Dropout(p = 0.25)
         self.out = nn.Linear(self.rnn_hid_size, 1)
