@@ -16,13 +16,38 @@ from sklearn import metrics
 
 SEQ_LEN = 100
 
+class PositionalEncoding(nn.Module):
+    "Implement the PE function."
+    def __init__(self, d_model, dropout, max_len=2*SEQ_LEN):
+        super(PositionalEncoding,self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0., max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0., d_model, 2) *
+                             -(math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        pe = pe.unsqueeze(2)
+        # pe.shape [1, SEQ_LEN, 1, d_model]
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        # x.shape [batch, SEQ_LEN, measure, d_model]
+        # import ipdb
+        # ipdb.set_trace()
+        return Variable(self.pe[:, :x.size(1)],
+                         requires_grad=False)
+        
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_size, heads):
+    def __init__(self, embed_size, heads, mode):
         super(MultiHeadAttention, self).__init__()
         self.embed_size = embed_size
         self.heads = heads
         self.head_dim = embed_size // heads
-
+        self.mode = mode
         assert (
             self.head_dim * heads == embed_size
         ), "Embedding size needs to be divisible by heads"
@@ -38,131 +63,134 @@ class MultiHeadAttention(nn.Module):
         self.fc_out = nn.Linear(heads * self.head_dim, embed_size)
 
     def forward(self, values, keys, query):
-        N, T, C = query.shape
 
-        values  = self.values(values)  # (N, T, embed_size)
-        keys    = self.keys(keys)      # (N, T, embed_size)
-        queries = self.queries(query)  # (N, T, embed_size)
+        B, T, N, C = query.shape
+
+        values  = self.values(values)  # (B, T, N, embed_size)
+        keys    = self.keys(keys)      # (B, T, N, embed_size)
+        queries = self.queries(query)  # (B, T, N, embed_size)
         
         # Split the embedding into self.heads different pieces
-        values = values.reshape(N, T, self.heads, self.head_dim)  #embed_size维拆成 heads×head_dim
-        keys   = keys.reshape(N, T, self.heads, self.head_dim)
-        query  = query.reshape(N, T, self.heads, self.head_dim)
+        values = values.reshape(B, T, N, self.heads, self.head_dim)  #embed_size维拆成 heads×head_dim
+        keys   = keys.reshape(B, T, N, self.heads, self.head_dim)
+        queries  = queries.reshape(B, T, N, self.heads, self.head_dim)
+        # (B, T, N, heads, heads_dim)
 
         # Einsum does matrix mult. for query*keys for each training example
         # with every other training example, don't be confused by einsum
         # it's just how I like doing matrix multiplication & bmm
-
-        energy = torch.einsum("qthd,kthd->qkth", [queries, keys])   # 空间self-attention
-        # queries shape: (N, T, heads, heads_dim),
-        # keys shape: (N, T, heads, heads_dim)
-        # energy: (N, N, T, heads)
+        if self.mode == 'spatial':
+            energy = torch.einsum("btqhd,btkhd->btqkh", [queries, keys])   # 空间self-attention
+            # queries shape: (B, T, N, heads, heads_dim) 
+            # keys shape: (B, T, N, heads, heads_dim) 
+            # energy: (B, T, N, N, heads)
+        elif self.mode == 'temporal':
+            energy = torch.einsum("bqnhd,bknhd->bqknh", [queries, keys])   # 时间self-attention
+            # queries shape: (B, T, N, heads, heads_dim) 
+            # keys shape: (B, T, N, heads, heads_dim) 
+            # energy: (B, T, T, N, heads)
 
         # Normalize energy values similarly to seq2seq + attention
         # so that they sum to 1. Also divide by scaling factor for
         # better stability
-        attention = torch.softmax(energy / (self.embed_size ** (1 / 2)), dim=1)  # 在K维做softmax，和为1
-        # attention shape: (N, N, T, heads)
+        if self.mode == 'spatial':
+            cur_dim = 3
+        elif self.mode == 'temporal':
+            cur_dim = 2
+        attention = torch.softmax(energy / (self.embed_size ** (1 / 2)), dim=cur_dim)  # 在K维做softmax，和为1
 
-        out = torch.einsum("qkth,kthd->qthd", [attention, values]).reshape(
-            N, T, self.heads * self.head_dim
-        )        
-        # attention shape: (N, N, T, heads)
-        # values shape: (N, T, heads, heads_dim)
-        # out after matrix multiply: (N, T, heads, head_dim), then
-        # we reshape and flatten the last two dimensions.
+        # attention shape: (batch, T, query_len, key_len, heads) 
+        # or (batch, query_len, key_len, N, heads)
+        
+        if self.mode == 'spatial':
+            out = torch.einsum("btqkh,btkhd->btqhd", [attention, values]).reshape(
+            B, T, N, self.heads * self.head_dim
+            ) 
+            # attention shape: (B, T, N, N, heads)
+            # values shape: (B, T, N, heads, heads_dim) 
+            # out after matrix multiply: (B, T, N, heads, heads_dim) , then
+            # we reshape and flatten the last two dimensions.
+      
+        elif self.mode == 'temporal':
+            out = torch.einsum("bqknh,bknhd->bqnhd", [attention, values]).reshape(
+            B, T, N, self.heads * self.head_dim
+            )
+            # attention shape: (B, T, T, N, heads)
+            # values shape: (B, T, N, heads, heads_dim)
+            # out after matrix multiply: (B, T, N, heads, heads_dim), then
+            # we reshape and flatten the last two dimensions. 
 
         out = self.fc_out(out)
         # Linear layer doesn't modify the shape, final shape will be
-        # (N, T, embed_size)
+        # (B, T, N, embed_size)
 
         return out
 
 
-class Model(nn.Module):
+class EncoderLayer(nn.Module):
     def __init__(
         self, 
-        adj,
-        in_channels = 1, 
-        embed_size = 64, 
-        time_num = 100,
-        num_layers = 3,
-        T_dim = 12,
-        output_T_dim = 3,  
-        heads = 2,
-        dropout = 0.1        
+        embed_size,   
+        heads,
+        dropout = 0.1,
+        forward_expansion = 4        
     ):
-        super(Model, self).__init__()
-        # 第一次卷积扩充通道数
-        self.conv1 = nn.Conv2d(in_channels, embed_size, 1)
+        super(EncoderLayer, self).__init__()
 
-        # # 缩小时间维度。  例：T_dim=12到output_T_dim=3，输入12维降到输出3维
-        # self.conv2 = nn.Conv2d(T_dim, output_T_dim, 1)  
+        # # 不能只用一个attention，不然就会共享linear层了
+        self.mha_spatial = MultiHeadAttention(embed_size, heads, 'spatial')
+        self.mha_temporal = MultiHeadAttention(embed_size, heads, 'temporal')
+        # 顺序 value,key,qurey
 
-        # 缩小通道数，降到1维。
-        self.conv2 = nn.Conv2d(embed_size, 1, 1)
-        self.relu = nn.ReLU()
-        self.mha_t = MultiHeadAttention(d_model, num_heads, m_dim)
-        self.mha_m = MultiHeadAttention(d_model, num_heads, time_dim)
-        self.ffn = point_wise_feed_forward_network(d_model, dff)
+        self.feed_forward = nn.Sequential(
+            nn.Linear(embed_size, forward_expansion * embed_size),
+            nn.ReLU(),
+            nn.Linear(forward_expansion * embed_size, embed_size),
+        )
 
         self.norm1 = nn.LayerNorm(embed_size)
         self.norm2 = nn.LayerNorm(embed_size)
 
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-
-        self.STransformer = STransformer(embed_size, heads, adj, dropout, forward_expansion)
-        self.TTransformer = TTransformer(embed_size, heads, time_num, dropout, forward_expansion)
-
     
-    def forward(self, value, key, query, t):
+    def forward(self, value, value_plus_pos):
         # Add skip connection,run through normalization and finally dropout
-        x1 = self.norm1(self.STransformer(value, key, query) + query)
-        x2 = self.dropout( self.norm2(self.TTransformer(x1, x1, x1, t) + x1) )
+        x1 = self.dropout1(self.norm1(
+                self.mha_spatial(value, value, value) +\
+                self.mha_temporal(value_plus_pos, value_plus_pos, value_plus_pos) + value))
+        x2 = self.dropout2(self.norm2(self.feed_forward(x1) + x1))
         return x2
 
-    def run_on_batch(self, data, optimizer, epoch = None):
-        ret = self(data, direct = 'forward')
-
-        if optimizer is not None:
-            optimizer.zero_grad()
-            ret['loss'].backward()
-            optimizer.step()
-
-        return ret
-
-
 class Model(nn.Module):
-    def __init__(self, rnn_hid_size, impute_weight, label_weight,input_size):
-        
+
+    def __init__(self,
+        rnn_hid_size, 
+        impute_weight, 
+        label_weight,
+        input_size,
+        embed_size=32,
+        n_heads=8, 
+        n_layers=4
+        ):
         super(Model, self).__init__()
 
-        self.rnn_hid_size = rnn_hid_size
-        self.impute_weight = impute_weight
-        self.label_weight = label_weight
-        self.input_size = input_size
+        # # 第一次卷积扩充通道数
+        self.conv1 = nn.Conv2d(1, embed_size, 1)
 
-        self.build()
+        self.pos_emb = PositionalEncoding(
+            d_model=embed_size,
+            dropout=0)
 
-    def build(self):
-        self.rnn_cell = nn.LSTMCell(self.input_size * 2, self.rnn_hid_size)
-
-        self.temp_decay_h = TemporalDecay(input_size = self.input_size, output_size = self.rnn_hid_size, diag = False)
-        self.temp_decay_x = TemporalDecay(input_size = self.input_size, output_size = self.input_size, diag = True)
-
-        self.hist_reg = nn.Linear(self.rnn_hid_size, self.input_size)
-        self.feat_reg = FeatureRegression(self.input_size)
-
-        self.weight_combine = nn.Linear(self.input_size * 2, self.input_size)
-
-        self.dropout = nn.Dropout(p = 0.25)
-        self.out = nn.Linear(self.rnn_hid_size, 1)
+        self.layers = []
+        for _ in range(n_layers):
+            encoder_layer = EncoderLayer(
+                embed_size=embed_size,heads=n_heads)
+            self.layers.append(encoder_layer)
+        self.layers = nn.ModuleList(self.layers)
 
     def forward(self, data, direct):
-        
-        # Original sequence with 24 time steps
-        values = data[direct]['values']
+        values = data[direct]['values'] #(batch,T,measure)
         masks = data[direct]['masks']
         deltas = data[direct]['deltas']
 
@@ -171,61 +199,28 @@ class Model(nn.Module):
 
         labels = data['labels'].view(-1, 1)
         is_train = data['is_train'].view(-1, 1)
+        
+        values = values.unsqueeze(1)
+        input_transformer = self.conv1(values)
+        input_transformer = input_transformer.permute(0, 2, 3, 1) 
+        # [ batch, T, measure, emb ]
 
-        h = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
-        c = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
+        pos_emb = self.pos_emb(input_transformer)
 
-        if torch.cuda.is_available():
-            h, c = h.cuda(), c.cuda()
+        enc_out_list = []
+        for layer in self.layers:
+            enc_outputs = layer(value=input_transformer,
+                                value_plus_pos=input_transformer+pos_emb)
+            enc_out_list.append(enc_outputs)
+        import ipdb
+        ipdb.set_trace()
+        enc_self_attns = torch.stack(enc_self_attns)
 
-        x_loss = 0.0
-        y_loss = 0.0
 
-        imputations = []
-
-        for t in range(SEQ_LEN):
-            x = values[:, t, :]
-            m = masks[:, t, :]
-            d = deltas[:, t, :]
-
-            gamma_h = self.temp_decay_h(d)
-            gamma_x = self.temp_decay_x(d)
-
-            h = h * gamma_h
-
-            x_h = self.hist_reg(h)
-            x_loss += torch.sum(torch.abs(x - x_h) * m) / (torch.sum(m) + 1e-5)
-
-            x_c =  m * x +  (1 - m) * x_h
-
-            z_h = self.feat_reg(x_c)
-            x_loss += torch.sum(torch.abs(x - z_h) * m) / (torch.sum(m) + 1e-5)
-
-            alpha = self.weight_combine(torch.cat([gamma_x, m], dim = 1))
-
-            c_h = alpha * z_h + (1 - alpha) * x_h
-            x_loss += torch.sum(torch.abs(x - c_h) * m) / (torch.sum(m) + 1e-5)
-
-            c_c = m * x + (1 - m) * c_h
-
-            inputs = torch.cat([c_c, m], dim = 1)
-
-            h, c = self.rnn_cell(inputs, (h, c))
-
-            imputations.append(c_c.unsqueeze(dim = 1))
-
-        imputations = torch.cat(imputations, dim = 1)
-
-        y_h = self.out(h)
-        y_loss = binary_cross_entropy_with_logits(y_h, labels, reduce = False)
-        y_loss = torch.sum(y_loss * is_train) / (torch.sum(is_train) + 1e-5)
-
-        y_h = torch.sigmoid(y_h)
-
-        return {'loss': x_loss * self.impute_weight + y_loss * self.label_weight, 'predictions': y_h,\
-                'imputations': imputations, 'labels': labels, 'is_train': is_train,\
-                'evals': evals, 'eval_masks': eval_masks}
-
+        enc_self_attns = torch.stack(enc_self_attns)
+        enc_self_attns = enc_self_attns.permute([1, 0, 2, 3, 4])
+        return enc_outputs, enc_self_attns
+    
     def run_on_batch(self, data, optimizer, epoch = None):
         ret = self(data, direct = 'forward')
 

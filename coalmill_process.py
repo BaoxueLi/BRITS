@@ -190,9 +190,17 @@ for j in range(len(data_list)):
     data_noisy=scaler.transform(data_noisy)
     data_ground=scaler.transform(data_ground)
     #### 减少数据量
-    data_noisy=data_noisy.copy()[:5000,:]
-    data_ground=data_ground.copy()[:5000,:]
-    masks=masks.copy()[:5000,:]
+    small_or_not = 1
+    if small_or_not == 1:
+        # 为了测试专用，加快加载速度
+        data_noisy=data_noisy.copy()[:200,:]
+        data_ground=data_ground.copy()[:200,:]
+        masks=masks.copy()[:200,:]
+        pass
+    else:
+        data_noisy=data_noisy.copy()[:5000,:]
+        data_ground=data_ground.copy()[:5000,:]
+        masks=masks.copy()[:5000,:]
     for k in range(masks.shape[0]-options.win_len):
         values = data_noisy[k:k+options.win_len,:].copy()
         value_mask = (~np.isnan(values)).astype('int')
@@ -213,7 +221,10 @@ for j in range(len(data_list)):
         list_final.append(rec)
         # import ipdb
         # ipdb.set_trace()
-    np.save('coalmill-data-TS/data_{}.npy'.format(name_list[j]),np.array(list_final))
+    if small_or_not:
+        np.save('coalmill-data-TS/data_{}_small.npy'.format(name_list[j]),np.array(list_final))
+    else:
+        np.save('coalmill-data-TS/data_{}.npy'.format(name_list[j]),np.array(list_final))
 import ipdb
 ipdb.set_trace()
 
