@@ -126,8 +126,8 @@ class Model(nn.Module):
         labels = data['labels'].view(-1, 1)
         is_train = data['is_train'].view(-1, 1)
 
-        import ipdb
-        ipdb.set_trace()
+        # import ipdb
+        # ipdb.set_trace()
 
         h = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
         c = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
@@ -172,6 +172,9 @@ class Model(nn.Module):
             imputations.append(c_c.unsqueeze(dim = 1))
 
         imputations = torch.cat(imputations, dim = 1)
+        
+        import ipdb
+        ipdb.set_trace()
 
         y_h = self.out(h)
         y_loss = binary_cross_entropy_with_logits(y_h, labels, reduce = False)

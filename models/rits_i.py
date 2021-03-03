@@ -97,6 +97,7 @@ class Model(nn.Module):
 
         imputations = []
 
+        # 所有batch一起来
         for t in range(SEQ_LEN):
             x = values[:, t, :]
             m = masks[:, t, :]

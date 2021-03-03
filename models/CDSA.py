@@ -177,6 +177,8 @@ class Model(nn.Module):
 
         # # 第一次卷积扩充通道数
         self.conv1 = nn.Conv2d(1, embed_size, 1)
+        # 缩小通道数，降到1维。
+        self.conv2 = nn.Conv2d(embed_size, 1, 1)
 
         self.pos_emb = PositionalEncoding(
             d_model=embed_size,
@@ -200,6 +202,7 @@ class Model(nn.Module):
         labels = data['labels'].view(-1, 1)
         is_train = data['is_train'].view(-1, 1)
         
+        batch_size = values.shape[0]
         values = values.unsqueeze(1)
         input_transformer = self.conv1(values)
         input_transformer = input_transformer.permute(0, 2, 3, 1) 
@@ -207,19 +210,27 @@ class Model(nn.Module):
 
         pos_emb = self.pos_emb(input_transformer)
 
-        enc_out_list = []
-        for layer in self.layers:
-            enc_outputs = layer(value=input_transformer,
-                                value_plus_pos=input_transformer+pos_emb)
-            enc_out_list.append(enc_outputs)
+        for i in range(len(self.layers)):
+            if i == 0:
+                input_transformer = self.layers[i](value=input_transformer,
+                                            value_plus_pos=input_transformer+pos_emb)
+            else:
+                input_transformer = self.layers[i](value=input_transformer,
+                                            value_plus_pos=input_transformer)
+        
+        out_put = input_transformer.permute(0, 3, 1, 2)
+        out_put = self.conv2(out_put)
+        out_put = out_put.squeeze(1) # (batch, T, measure)
+        
+        x_loss = (masks*((out_put - values.squeeze(1)) ** 2)).reshape(batch_size,-1).mean(-1)
+        x_loss = x_loss * is_train
         import ipdb
         ipdb.set_trace()
-        enc_self_attns = torch.stack(enc_self_attns)
 
+        return {'loss': x_loss, 'predictions': 0,\
+                'imputations': out_put, 'labels': labels, 'is_train': is_train,\
+                'evals': evals, 'eval_masks': eval_masks}
 
-        enc_self_attns = torch.stack(enc_self_attns)
-        enc_self_attns = enc_self_attns.permute([1, 0, 2, 3, 4])
-        return enc_outputs, enc_self_attns
     
     def run_on_batch(self, data, optimizer, epoch = None):
         ret = self(data, direct = 'forward')

@@ -123,7 +123,7 @@ def run():
 
     train(model)
 
-# python main.py --model brits --input_size 36 --epochs 1000 --batch_size 64 --impute_weight 0.3 --label_weight 0 --hid_size 108
+# python main.py --model brits --small_data True --input_size 36 --epochs 1000 --batch_size 64 --impute_weight 0.3 --label_weight 0 --hid_size 108
 # python main.py --model CDSA --small_data True --input_size 36 --epochs 1000 --batch_size 64 --impute_weight 0.3 --label_weight 0 --hid_size 108
 if __name__ == '__main__':
     setup_seed(1)
