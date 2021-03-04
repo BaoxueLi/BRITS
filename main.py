@@ -22,6 +22,7 @@ from ipdb import set_trace
 parser = argparse.ArgumentParser()
 parser.add_argument('--epochs', type=int, default=1000)
 parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--model', type=str)
 parser.add_argument('--hid_size', type=int)
 parser.add_argument('--input_size', type=int)
@@ -120,7 +121,7 @@ def run():
     print('Total params is {}'.format(total_params))
 
     if torch.cuda.is_available():
-        model = model.cuda()
+        model = model.cuda(args.gpu)
         print('Model is on GPU.')
 
     train(model)
