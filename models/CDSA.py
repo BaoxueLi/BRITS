@@ -223,11 +223,12 @@ class Model(nn.Module):
         out_put = out_put.squeeze(1) # (batch, T, measure)
         
         x_loss = (masks*((out_put - values.squeeze(1)) ** 2)).reshape(batch_size,-1).mean(-1)
-        x_loss = x_loss * is_train
-        import ipdb
-        ipdb.set_trace()
 
-        return {'loss': x_loss, 'predictions': 0,\
+        x_loss = torch.sum(x_loss * is_train.squeeze(1))
+        # import ipdb
+        # ipdb.set_trace()
+
+        return {'loss': x_loss, 'predictions': labels,\
                 'imputations': out_put, 'labels': labels, 'is_train': is_train,\
                 'evals': evals, 'eval_masks': eval_masks}
 

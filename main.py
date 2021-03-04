@@ -73,6 +73,8 @@ def evaluate(model, val_iter):
         save_label.append(ret['labels'].data.cpu().numpy())
 
         pred = ret['predictions'].data.cpu().numpy()
+        # import ipdb
+        # ipdb.set_trace()
         label = ret['labels'].data.cpu().numpy()
         is_train = ret['is_train'].data.cpu().numpy()
 
