@@ -1,9 +1,14 @@
 # coding: utf-8
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+import warnings
+warnings.filterwarnings('ignore')
 import json
 import fancyimpute
 import numpy as np
 import pandas as pd
 
+from missingpy import MissForest
 X = []
 Y = []
 Z = []
@@ -26,7 +31,7 @@ Z = []
 #     Y.append(y)
 #     Z.append(int(z))
 
-content = np.load('coalmill-data-TS/data_D.npy',allow_pickle=True).tolist()
+content = np.load('coalmill-data-TS/data_D_small.npy',allow_pickle=True).tolist()
 len_content = len(content)
 
 for j in range(len_content):
@@ -48,7 +53,6 @@ for j in range(len_content):
     X.append(x)
     Y.append(y)
     Z.append(int(z))
-
 
 def get_loss(X, X_pred, Y):
     # find ones in Y but not in X (ground truth)
@@ -85,15 +89,15 @@ print(X_c.shape, Y_c.shape, Z_c.shape)
 # raw_input()
 np.save('./result/mean_data.npy', X_mean)
 np.save('./result/mean_label.npy', Z_c)
-import ipdb
-ipdb.set_trace()
+# import ipdb
+# ipdb.set_trace()
 
 # Algo2: KNN imputation
 
 X_knn = []
 
 for x, y in zip(X, Y):
-    X_knn.append(fancyimpute.KNN(k=10, verbose=False).complete(x))
+    X_knn.append(fancyimpute.KNN(k=10, verbose=False).fit_transform(x))
 
 
 X_c = np.concatenate(X, axis=0)
@@ -103,45 +107,33 @@ X_knn = np.concatenate(X_knn, axis=0)
 print('KNN imputation')
 print(get_loss(X_c, X_knn, Y_c))
 
-raw_input()
-
-
 # ### Matrix Factorization
 # since MF is extremely slow, we evaluate the imputation result every 100 iterations
 
 X_mf = []
 
 for i, (x, y) in enumerate(zip(X, Y)):
-    X_mf.append(fancyimpute.MatrixFactorization(loss='mae', verbose=False).complete(x))
+    X_mf.append(fancyimpute.MatrixFactorization(loss='mae', verbose=False).fit_transform(x))
+    if i % 10 == 0:
+        print(i)
 
-    if i % 100 == 0:
-        X_c = np.concatenate(X[:i + 1], axis=0)
-        Y_c = np.concatenate(Y[:i + 1], axis=0)
-        X_mf_c = np.concatenate(X_mf, axis=0)
+X_c = np.concatenate(X, axis=0)
+Y_c = np.concatenate(Y, axis=0)
+X_mf = np.concatenate(X_mf, axis=0)
 
-        print('MF imputation')
-        print(get_loss(X_c, X_mf_c, Y_c))
-
+print('MF imputation')
+print(get_loss(X_c, X_mf, Y_c))
 
 # MICE imputation
 # Since MICE can not handle the singular matrix, we do it in a batch style
 
 X_mice = []
 
-# since the data matrix of one patient is a singular matrix, we merge a batch of matrices and do MICE impute
-
-n = len(X)
-batch_size = 128
-nb_batch = (n + batch_size - 1) // batch_size
-
-for i in range(nb_batch):
-    print('On batch {}'.format(i))
-    x = np.concatenate(X[i * batch_size: (i + 1) * batch_size])
-    y = np.concatenate(Y[i * batch_size: (i + 1) * batch_size])
-    x_mice = fancyimpute.MICE(n_imputations=100, n_pmm_neighbors=20, verbose=False).complete(x)
-
-    X_mice.append(x_mice)
-
+for x, y in zip(X, Y):
+    # print('mice...')
+    X_mice.append(MissForest().fit_transform(x))
+    # import ipdb
+    # ipdb.set_trace()
 X_mice = np.concatenate(X_mice, axis=0)
 X_c = np.concatenate(X, axis=0)
 Y_c = np.concatenate(Y, axis=0)

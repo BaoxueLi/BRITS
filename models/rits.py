@@ -173,8 +173,8 @@ class Model(nn.Module):
 
         imputations = torch.cat(imputations, dim = 1)
         
-        import ipdb
-        ipdb.set_trace()
+        # import ipdb
+        # ipdb.set_trace()
 
         y_h = self.out(h)
         y_loss = binary_cross_entropy_with_logits(y_h, labels, reduce = False)
