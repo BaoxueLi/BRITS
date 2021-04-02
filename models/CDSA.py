@@ -28,6 +28,16 @@ def generate_mask(batch, atten_dim, heads):
     # ipdb.set_trace()
     return unit_mat.float()
 
+def generate_mask_test(batch, atten_dim, heads):
+    unit_mat = np.identity(atten_dim)
+    unit_mat = torch.from_numpy(unit_mat).cuda()
+    unit_mat = unit_mat.unsqueeze(0)
+    unit_mat = unit_mat.unsqueeze(3)
+    unit_mat = unit_mat.repeat(batch,1,1,heads)
+    # import ipdb
+    # ipdb.set_trace()
+    return unit_mat.float()
+
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
     def __init__(self, d_model, dropout, max_len=2*SEQ_LEN):
@@ -72,14 +82,15 @@ class MultiHeadAttention(nn.Module):
         #     embed_size * extra_dim % heads == 0
         # ), "Embedding size needs to be divisible by heads"
 
-        self.values = nn.Linear(self.extra_dim, self.heads * self.head_dim, bias=False)
-        self.keys = nn.Linear(self.extra_dim, self.heads * self.head_dim, bias=False)
-        self.queries = nn.Linear(self.extra_dim, self.heads * self.head_dim, bias=False)
+        self.values = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
+        self.keys = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
+        self.queries = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
 
         self.fc_out = nn.Linear(embed_size, embed_size)
 
     def forward(self, values, keys, queries):
-
+        
+        # values_test = values
         B, T, N, C = queries.shape
 
         if self.mode == 'spatial':
@@ -102,7 +113,7 @@ class MultiHeadAttention(nn.Module):
       
         # Split the embedding into self.heads different pieces
         values = values.reshape(B, T, N, self.heads, self.V_unit)  #拆成 heads×head_dim
-        # (B, atten_dim, heads, unit)
+        # (B, T, N, heads, unit)
         keys   = keys.reshape(B, -1, self.heads, self.head_dim)
         queries  = queries.reshape(B, -1, self.heads, self.head_dim)
         # (B, atten_dim, heads, unit)
@@ -114,33 +125,37 @@ class MultiHeadAttention(nn.Module):
         
         if FLAG_IMPUTATION:
             cur_mask = generate_mask(B,atten_dim,self.heads)
+            # cur_mask = generate_mask_test(B,atten_dim,self.heads)
             energy = energy * cur_mask + (1-cur_mask) * (-1e9)
 
         attention = torch.softmax(energy / (self.head_dim ** (1 / 2)), dim=2)  # 在K维做softmax，和为1
         # (batch, query_len, key_len, heads) 
-        
+
         if self.mode == 'spatial':
-            pass
+            # (B, T, N, heads, unit) -> (B, N, heads, T*unit)
+            values=values.permute(0,2,3,1,4)
+            values=values.reshape(B,N,self.heads,-1)
         elif self.mode == 'temporal':
-            pass
-        
-        import ipdb
-        ipdb.set_trace()
+            # (B, T, N, heads, unit) -> (B, T, heads, N*unit)
+            values=values.permute(0,1,3,2,4)
+            values=values.reshape(B,T,self.heads,-1)
+
 
         out = torch.einsum("bqkh,bkhd->bqhd", [attention, values])
         # attention shape: (B, atten_dim, atten_dim, heads)
-        # values shape: (B, atten_dim, heads, heads_dim)
-        # out after matrix multiply: (B, atten_dim, heads, heads_dim), then
-        # we reshape and flatten the last two dimensions. 
-        
-        
+        # values shape: (B, atten_dim, heads, extra_dim * heads_dim)
+        # out after matrix multiply: (B, atten_dim, heads, extra_dim * heads_dim), then
+        # we reshape. 
+        out = out.reshape(B,atten_dim,self.heads,-1,self.V_unit)
+        out = out.transpose(2,3)
+        out=out.reshape(B,atten_dim,self.extra_dim,-1)
+        # import ipdb
+        # ipdb.set_trace()  
 
-        out = self.fc_out(out)
-        # Linear layer doesn't modify the shape, final shape will be
-        # (B, atten_dim, extra_dim, embed_size)
         if self.mode == 'spatial':
             out = out.transpose(1,2)
-
+        # import ipdb
+        # ipdb.set_trace()
         return out
 
 
@@ -167,25 +182,28 @@ class EncoderLayer(nn.Module):
         # 顺序 value,key,qurey
 
         self.feed_forward = nn.Sequential(
-            nn.Linear(embed_size, forward_expansion * embed_size),
+            nn.Linear(heads * V_unit, forward_expansion * heads * V_unit),
             nn.ReLU(),
-            nn.Linear(forward_expansion * embed_size, embed_size),
+            nn.Linear(forward_expansion * heads * V_unit, heads * V_unit),
         )
 
-        self.norm1 = nn.LayerNorm(embed_size)
-        self.norm2 = nn.LayerNorm(embed_size)
+        self.reduction = nn.Linear(2 * heads * V_unit, heads * V_unit)
+
+        self.norm1 = nn.LayerNorm(heads * V_unit)
+        self.norm2 = nn.LayerNorm(heads * V_unit)
 
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
     
     def forward(self, value, key_time, key_measure, atten_input):
-        # x1 = self.dropout1(self.norm1(
-        #         self.mha_spatial(value, key_measure, atten_input) +\
-        #         self.mha_temporal(value, key_time, atten_input) +\
-        #         value))
+        # 怎么layer norm
+        x0 = torch.cat((self.mha_spatial(value, key_measure, atten_input),
+                        self.mha_temporal(value, key_time, atten_input)),3)
+
         x1 = self.dropout1(self.norm1(
-                self.mha_temporal(value, key_time, atten_input) +\
-                value))
+                self.reduction(x0)+
+                atten_input))
+
         x2 = self.dropout2(self.norm2(self.feed_forward(x1) + x1))
         return x2
 
@@ -210,7 +228,7 @@ class Model(nn.Module):
         # # 第一次卷积扩充通道数
         self.conv1 = nn.Conv2d(1, n_heads * v_unit, 1)
         # 缩小通道数，降到1维。
-        self.conv2 = nn.Conv2d(embed_size, 1, 1)
+        self.conv2 = nn.Conv2d(n_heads * v_unit, 1, 1)
 
         self.pos_emb = PositionalEncoding(
             d_model=embed_size,
@@ -241,7 +259,7 @@ class Model(nn.Module):
         
         batch_size, t_dim, m_dim = values.shape
         
-        enclayer_in = values.unsqueeze(-1) # [ batch, T, measure, 1 ]
+        enclayer_zero = values.unsqueeze(-1) # [ batch, T, measure, 1 ]
         values = values.unsqueeze(1)
         
         input_transformer = self.conv1(values)
@@ -249,18 +267,20 @@ class Model(nn.Module):
         # [ batch, T, measure, heads * v_unit ]
 
         #[batch, T, heads * T_unit]
-        K_time = self.key_time_linear(enclayer_in.reshape(batch_size, t_dim, -1))
+        K_time = self.key_time_linear(enclayer_zero.reshape(batch_size, t_dim, -1))
         #[batch, M, heads * M_unit]
-        K_measure = self.key_measure_linear(enclayer_in.transpose(1,2).reshape(batch_size,m_dim,-1))
+        K_measure = self.key_measure_linear(enclayer_zero.transpose(1,2).reshape(batch_size,m_dim,-1))
 
         # 暂时不要positional encodeing
-        pos_emb = self.pos_emb(input_transformer)
+        # pos_emb = self.pos_emb(input_transformer)
+
+        enclayer_in = input_transformer
 
         for i in range(len(self.layers)):
             enclayer_in = self.layers[i](value=input_transformer,key_time=K_time,
                                         key_measure=K_measure,atten_input=enclayer_in)
         
-        out_put = input_transformer.permute(0, 3, 1, 2) #(B, T, M, d)->(B, d, T, M)
+        out_put = enclayer_in.permute(0, 3, 1, 2) #(B, T, M, d)->(B, d, T, M)
         out_put = self.conv2(out_put) #(B, d, T, M)->(B, 1, T, M)
         out_put = out_put.squeeze(1) # (batch, T, M)
         

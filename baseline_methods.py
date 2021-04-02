@@ -89,8 +89,7 @@ print(X_c.shape, Y_c.shape, Z_c.shape)
 # raw_input()
 np.save('./result/mean_data.npy', X_mean)
 np.save('./result/mean_label.npy', Z_c)
-# import ipdb
-# ipdb.set_trace()
+
 
 # Algo2: KNN imputation
 
@@ -106,6 +105,9 @@ X_knn = np.concatenate(X_knn, axis=0)
 
 print('KNN imputation')
 print(get_loss(X_c, X_knn, Y_c))
+
+# import ipdb
+# ipdb.set_trace()
 
 # ### Matrix Factorization
 # since MF is extremely slow, we evaluate the imputation result every 100 iterations
