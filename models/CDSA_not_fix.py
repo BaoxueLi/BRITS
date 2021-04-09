@@ -85,33 +85,33 @@ class MultiHeadAttention(nn.Module):
         #     embed_size * extra_dim % heads == 0
         # ), "Embedding size needs to be divisible by heads"
 
-        # self.values = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
-        # self.keys = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
-        self.queries = nn.Linear(self.extra_dim, self.heads * self.head_dim, bias=False)
+        self.values = nn.Linear(V_unit * heads, V_unit * heads, bias=False)
+        self.keys = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
+        self.queries = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
 
-        self.fc_out = nn.Linear(heads * V_unit, 1)
+        self.fc_out = nn.Linear(embed_size, embed_size)
 
     def forward(self, values, keys, queries):
-        
-        # values_test = values
+
         B, T, N, C = queries.shape
 
         if self.mode == 'spatial':
-            # values = values.transpose(1,2) 
-            # keys = keys.transpose(1,2)
-            queries = queries.transpose(1,2) # (B, N, T, 1)
+            # values = values.transpose(1,2) # (B, N, T, 1)
+            keys = keys.transpose(1,2)
+            queries = queries.transpose(1,2)
             atten_dim = N
         elif self.mode == 'temporal':
             atten_dim = T   # (B, T, N, 1)
             pass
 
         # 非attention的维度放在一起
-        # values = values.reshape(B, atten_dim, -1)   
-        # keys   = keys.reshape(B, atten_dim, -1)  
-        queries  = queries.reshape(B, atten_dim, -1)  # (B, T, N) or (B, N, T)
+        # values = values.reshape(B, atten_dim, -1)   # (B, T, N) or (B, N, T)
+        keys   = keys.reshape(B, atten_dim, -1)  
+        queries  = queries.reshape(B, atten_dim, -1)  
 
-        # values  = self.values(values)  # (B, atten_dim, head * unit)
-        # keys    = self.keys(keys)      # (B, atten_dim, head * unit)
+        values  = self.values(values)  # (B, T, N, heads * unit)
+        # values_test = values           # ! test   
+        keys    = self.keys(keys)      # (B, atten_dim, head * unit)
         queries = self.queries(queries)  # (B, atten_dim, head * unit)
       
         # Split the embedding into self.heads different pieces
@@ -125,10 +125,13 @@ class MultiHeadAttention(nn.Module):
         # queries shape: (B, atten_dim, heads, heads_dim)
         # keys shape: (B, atten_dim, heads, heads_dim)
         # energy: (B, atten_dim, atten_dim, heads) 
+        
+        # import ipdb
+        # ipdb.set_trace()
 
         if FLAG_IMPUTATION:
             cur_mask = generate_mask(B,atten_dim,self.heads)
-            # cur_mask = generate_mask_test(B,atten_dim,self.heads)
+            # cur_mask = generate_mask_test(B,atten_dim,self.heads) #! test
             energy = energy * cur_mask + (1-cur_mask) * (-1e9)
         
         attention = torch.softmax(energy / (self.head_dim ** (1 / 2)), dim=2)  # 在K维做softmax，和为1
@@ -152,11 +155,10 @@ class MultiHeadAttention(nn.Module):
         out = out.reshape(B,atten_dim,self.heads,-1,self.V_unit)
         out = out.transpose(2,3)
         out=out.reshape(B,atten_dim,self.extra_dim,-1)
+  
 
         if self.mode == 'spatial':
             out = out.transpose(1,2)
-        out = self.fc_out(out)
-        # ! 输出没问题，调好了
         # import ipdb
         # ipdb.set_trace()
         return out
@@ -198,17 +200,18 @@ class EncoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
     
-    def forward(self, value, key_time, key_measure, atten_input):
+    def forward(self, atten_input):
         ##### T + S
-        # import ipdb
-        # ipdb.set_trace()
-        x0 = torch.cat((self.mha_spatial(value, key_measure, atten_input),
-                        self.mha_temporal(value, key_time, atten_input)),3)
+        # ! pre-LN
+        atten_input_pure = atten_input
+        atten_input = self.norm1(atten_input)
 
-        x1 = self.dropout1(self.norm1(
+        x0 = torch.cat((self.mha_spatial(atten_input, atten_input, atten_input),
+                        self.mha_temporal(atten_input, atten_input, atten_input)),3)
+
+        x1 = self.dropout1(
                 self.reduction(x0)+
-                atten_input))
-
+                atten_input_pure)
         ###### S only
         # x0 = self.mha_spatial(value, key_measure, atten_input)
         ###### T only
@@ -220,7 +223,7 @@ class EncoderLayer(nn.Module):
         ########################
         # border 
         ########################
-        x2 = self.dropout2(self.norm2(self.feed_forward(x1) + x1))
+        x2 = self.dropout2(self.feed_forward(self.norm2(x1)) + x1)
         return x2
 
 class Model(nn.Module):
@@ -283,19 +286,17 @@ class Model(nn.Module):
         # ! [ batch, T, measure, heads * v_unit = 24]
 
         #[batch, T, heads * T_unit]
-        K_time = self.key_time_linear(enclayer_zero.reshape(batch_size, t_dim, -1))
+        # K_time = self.key_time_linear(enclayer_zero.reshape(batch_size, t_dim, -1))
         #[batch, M, heads * M_unit]
-        K_measure = self.key_measure_linear(enclayer_zero.transpose(1,2).reshape(batch_size,m_dim,-1))
+        # K_measure = self.key_measure_linear(enclayer_zero.transpose(1,2).reshape(batch_size,m_dim,-1))
 
-        # import ipdb
-        # ipdb.set_trace()
-        
-        # enclayer_in = input_transformer # ! input after conv
-        enclayer_in = enclayer_zero  # ? input without conv
+        # 暂时不要positional encodeing
+        # pos_emb = self.pos_emb(input_transformer)
+
+        enclayer_in = input_transformer
 
         for i in range(len(self.layers)):
-            enclayer_in = self.layers[i](value=input_transformer,key_time=K_time,
-                                        key_measure=K_measure,atten_input=enclayer_in)
+            enclayer_in = self.layers[i](atten_input=enclayer_in)
         
         out_put = enclayer_in.permute(0, 3, 1, 2) #(B, T, M, d)->(B, d, T, M)
         out_put = self.conv2(out_put) #(B, d, T, M)->(B, 1, T, M)
@@ -303,7 +304,8 @@ class Model(nn.Module):
         
         x_loss = (masks*((out_put - values.squeeze(1)) ** 2)).reshape(batch_size,-1).sum(-1)/ \
                             masks.reshape(batch_size,-1).sum(-1)
-        
+        # import ipdb
+        # ipdb.set_trace()
         x_loss = torch.sum(x_loss * is_train.squeeze(1)) / (torch.sum(is_train) + 1e-5)
 
 

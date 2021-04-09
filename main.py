@@ -31,6 +31,7 @@ parser.add_argument('--label_weight', type=float)
 parser.add_argument('--small_data', type=bool,default=False)
 args = parser.parse_args()
 
+best_res = {'epoch':0,'MAE':1e6,'MRE':1e6,'RMSE':1e6}
 
 def train(model):
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -50,10 +51,10 @@ def train(model):
 
             print ('\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0)),)
 
-        evaluate(model, data_iter)
+        evaluate(model, data_iter, epoch)
 
 
-def evaluate(model, val_iter):
+def evaluate(model, val_iter, epoch):
     model.eval()
 
     labels = []
@@ -102,10 +103,15 @@ def evaluate(model, val_iter):
     evals = np.asarray(evals)
     imputations = np.asarray(imputations)
 
-    print ('MAE', np.abs(evals - imputations).mean())
+    if np.abs(evals - imputations).mean() < best_res['MAE']:
+        best_res['epoch'] = epoch
+        best_res['MAE'] = np.abs(evals - imputations).mean()
+        best_res['MRE'] = np.abs(evals - imputations).sum() / np.abs(evals).sum()
+        best_res['RMSE'] = np.sqrt(np.mean((evals-imputations)**2))
 
-    print ('MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum())
-    print ('RMSE', np.sqrt(np.mean((evals-imputations)**2)))
+    print ('MAE:', np.abs(evals - imputations).mean(),'best MAE:',best_res['MAE'],'epoch',best_res['epoch'])
+    print ('MRE:', np.abs(evals - imputations).sum() / np.abs(evals).sum(),'best MRE:',best_res['MRE'])
+    print ('RMSE', np.sqrt(np.mean((evals-imputations)**2)),'best RMSE',best_res['RMSE'])
     # import ipdb
     # ipdb.set_trace()
     save_impute = np.concatenate(save_impute, axis=0)
