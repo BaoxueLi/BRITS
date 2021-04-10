@@ -89,7 +89,7 @@ class MultiHeadAttention(nn.Module):
         # self.keys = nn.Linear(self.extra_dim * V_unit * heads, self.heads * self.head_dim, bias=False)
         self.queries = nn.Linear(self.extra_dim, self.heads * self.head_dim, bias=False)
 
-        self.fc_out = nn.Linear(heads * V_unit, 1)
+        # self.fc_out = nn.Linear(heads * V_unit, 1)
 
     def forward(self, values, keys, queries):
         
@@ -155,7 +155,7 @@ class MultiHeadAttention(nn.Module):
 
         if self.mode == 'spatial':
             out = out.transpose(1,2)
-        out = self.fc_out(out)
+        # out = self.fc_out(out)
         # ! 输出没问题，调好了
         # import ipdb
         # ipdb.set_trace()
@@ -185,30 +185,42 @@ class EncoderLayer(nn.Module):
         # 顺序 value,key,qurey
 
         self.feed_forward = nn.Sequential(
-            nn.Linear(heads * V_unit, forward_expansion * heads * V_unit),
+            nn.Linear(1, forward_expansion),
             nn.ReLU(),
-            nn.Linear(forward_expansion * heads * V_unit, heads * V_unit),
+            nn.Linear(forward_expansion, 1),
         )
 
-        self.reduction = nn.Linear(2 * heads * V_unit, heads * V_unit)
+        self.reduction = nn.Linear(2 * heads * V_unit, 1)
 
-        self.norm1 = nn.LayerNorm(heads * V_unit)
-        self.norm2 = nn.LayerNorm(heads * V_unit)
+        self.norms = []
+        self.norms.append(nn.LayerNorm(m_dim)) # ? first norm of measure
+        self.norms.append(nn.LayerNorm(m_dim)) # ? second norm
+        self.norms = nn.ModuleList(self.norms)
+        # self.norm1 = nn.LayerNorm(heads * V_unit)
+        # self.norm2 = nn.LayerNorm(heads * V_unit)
 
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
+
+    def lay_norm(self,norm_input,count):
+        # ? 对measure进行norm，这里是参照CDSA的源码
+        norm_input = norm_input.squeeze(-1)
+        norm_input = self.norms[count](norm_input)
+        norm_input = norm_input.unsqueeze(-1)
+
+        return norm_input
     
     def forward(self, value, key_time, key_measure, atten_input):
         ##### T + S
-        # import ipdb
-        # ipdb.set_trace()
+
         x0 = torch.cat((self.mha_spatial(value, key_measure, atten_input),
                         self.mha_temporal(value, key_time, atten_input)),3)
-
-        x1 = self.dropout1(self.norm1(
+        
+        x1 = self.dropout1(self.lay_norm(
                 self.reduction(x0)+
-                atten_input))
-
+                atten_input,count = 0)) # ! count = 0 
+        import ipdb
+        ipdb.set_trace()
         ###### S only
         # x0 = self.mha_spatial(value, key_measure, atten_input)
         ###### T only
