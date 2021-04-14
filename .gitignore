@@ -8,4 +8,4 @@ result/*.npy
 coalmill-mask
 coalmill-data-*
 visual
-best_res
+best_res/*.npy
