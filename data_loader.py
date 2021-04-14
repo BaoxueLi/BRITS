@@ -17,12 +17,7 @@ class MySet(Dataset):
         st_time = time.time()
         print('domain: {}, size: {}'.format(domain,small_data))
         # self.content = np.load('./json/data.npy',allow_pickle=True).tolist()
-        if small_data == 'small':
-            self.content = np.load('coalmill-data-TS/data_{}_small.npy'.format(domain),allow_pickle=True).tolist()
-        elif small_data == 'medium':
-            self.content = np.load('coalmill-data-TS/data_{}_medium.npy'.format(domain),allow_pickle=True).tolist()
-        else:
-            self.content = np.load('coalmill-data-TS/data_{}_normal.npy'.format(domain),allow_pickle=True).tolist()
+        self.content = np.load('coalmill-data-TS/data_{}_{}.npy'.format(domain,small_data),allow_pickle=True).tolist()
         en_time = time.time()
         print('Successful load, time cosumed: {:.2f}s'.format(en_time-st_time))
         # self.content = open('./json/json').readlines()

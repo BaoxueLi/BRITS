@@ -30,6 +30,7 @@ parser.add_argument('--input_size', type=int)
 parser.add_argument('--impute_weight', type=float)
 parser.add_argument('--label_weight', type=float)
 parser.add_argument('--small_data', type=str,default='small')
+parser.add_argument('--mode', type=str,default='both')
 parser.add_argument('--warm_up_epochs', type=int, default=10)
 args = parser.parse_args()
 
@@ -122,7 +123,7 @@ def evaluate(model, val_iter, epoch):
     # ipdb.set_trace()
 
 def run():
-    model = getattr(models, args.model).Model(args.hid_size, args.impute_weight, args.label_weight,args.input_size)
+    model = getattr(models, args.model).Model(args.hid_size, args.impute_weight, args.label_weight,args.input_size, mode=args.mode)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(model)
     print('Total params is {}'.format(total_params))
@@ -130,7 +131,7 @@ def run():
     if torch.cuda.is_available():
         model = model.cuda(args.gpu)
         print('Model is on GPU.')
-
+    print('mode: {}'.format(args.mode))
     train(model)
 
 # python main.py --model brits --small_data small --input_size 36 --epochs 1000 --batch_size 64 --impute_weight 0.3 --label_weight 0 --hid_size 108

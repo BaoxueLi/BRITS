@@ -21,7 +21,7 @@ RNN_HID_SIZE = 64
 
 
 class Model(nn.Module):
-    def __init__(self, rnn_hid_size, impute_weight, label_weight,input_size):
+    def __init__(self, rnn_hid_size, impute_weight, label_weight,input_size,mode):
         super(Model, self).__init__()
 
         self.rnn_hid_size = rnn_hid_size
