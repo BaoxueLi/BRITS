@@ -59,17 +59,6 @@ data_D=data_D[~data_D.isin(["Bad"])]
 data_E=data_E[~data_E.isin(["Bad"])]
 data_F=data_F[~data_F.isin(["Bad"])]
 
-# 停机肯定是要去掉的，但不是现在
-# data_D=data_D[~(data_D[data_D.columns[0]]<20)] # 去掉停机
-# data_F=data_F[~(data_F[data_F.columns[0]]<20)]
-# data_B=data_B[~(data_B[data_B.columns[0]]<20)] # 去掉停机
-# data_E=data_E[~(data_E[data_E.columns[0]]<20)]
-# #去掉某些行后需要对index重新索引
-# data_B=data_B.reset_index(drop=True)
-# data_E=data_E.reset_index(drop=True)
-# data_D=data_D.reset_index(drop=True)
-# data_F=data_F.reset_index(drop=True)
-
 # 调换B的属性顺序,注意，这里把time维度去掉了，所以index都减1
 B_col=data_B.columns.tolist()
 temp_col=B_col.pop(14)
@@ -88,10 +77,12 @@ data_B=data_B[B_col]
 ########################
 # 把BDEF的放在一起看看 #
 ########################
-# name_list=['B','D','E','F']
-# data_list=[data_B.copy(),data_D.copy(),data_E.copy(),data_F.copy()]
-name_list=['D','B','E','F']
-data_list=[data_D.copy(),data_B.copy(),data_E.copy(),data_F.copy()]
+
+# name_list=['D','B','E','F']
+# data_list=[data_D.copy(),data_B.copy(),data_E.copy(),data_F.copy()]
+
+name_list=['F']
+data_list=[data_F.copy()]
 # print(len(data_D),len(data_F))
 
 # 生成一份去掉停机数据的数据（这是考虑到停机数据会对标准化有影响），求取平均值和方差（或最大值最小值）
@@ -190,13 +181,17 @@ for j in range(len(data_list)):
     data_noisy=scaler.transform(data_noisy)
     data_ground=scaler.transform(data_ground)
     #### 减少数据量
-    small_or_not = 1
-    if small_or_not == 1:
-        # 为了测试专用，加快加载速度
+    small_or_not = 'medium' # ? normal, medium, small
+    if small_or_not == 'small':
+        # ! 为了测试专用，加快加载速度
         data_noisy=data_noisy.copy()[:200,:]
         data_ground=data_ground.copy()[:200,:]
         masks=masks.copy()[:200,:]
         pass
+    elif small_or_not == 'medium':
+        data_noisy=data_noisy.copy()[:1000,:]
+        data_ground=data_ground.copy()[:1000,:]
+        masks=masks.copy()[:1000,:]
     else:
         data_noisy=data_noisy.copy()[:5000,:]
         data_ground=data_ground.copy()[:5000,:]
@@ -221,12 +216,12 @@ for j in range(len(data_list)):
         list_final.append(rec)
         # import ipdb
         # ipdb.set_trace()
-    if small_or_not:
-        np.save('coalmill-data-TS/data_{}_small.npy'.format(name_list[j]),np.array(list_final))
-    else:
-        np.save('coalmill-data-TS/data_{}.npy'.format(name_list[j]),np.array(list_final))
+
+    np.save('coalmill-data-TS/data_{}_{}.npy'.format(name_list[j],small_or_not),np.array(list_final))
+
+        # np.save('coalmill-data-TS/data_{}.npy'.format(name_list[j]),np.array(list_final))
 import ipdb
 ipdb.set_trace()
 
-#TODO 还没去掉停机、还没去掉自然缺失、还没标准化、生成训练和测试(dict for rnn)(npy for simple，提前分好)
+
 

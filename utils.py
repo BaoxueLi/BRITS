@@ -6,6 +6,7 @@ import numpy as np
 from torch.autograd import Variable
 import random
 import pandas as pd
+import matplotlib.pyplot as plt
 
 def setup_seed(seed: int):
     torch.manual_seed(seed)
@@ -82,3 +83,12 @@ def coal_rec(values, masks, evals, eval_masks, dir_):
     rec['deltas'] = deltas.tolist()
 
     return rec
+
+def test_plot(values):
+    values = values.cpu().numpy()
+    attr = values.shape[-1]
+    
+    for i in range(6):
+        plt.subplot(3,2,i+1)
+        plt.plot(values[0,:,i])
+    plt.show()

@@ -14,6 +14,7 @@ import data_loader
 
 from ipdb import set_trace
 from sklearn import metrics
+from utils import test_plot
 
 SEQ_LEN = 100
 FLAG_IMPUTATION = True
@@ -204,9 +205,9 @@ class EncoderLayer(nn.Module):
 
     def lay_norm(self,norm_input,count):
         # ? 对measure进行norm，这里是参照CDSA的源码
-        norm_input = norm_input.squeeze(-1)
-        norm_input = self.norms[count](norm_input)
-        norm_input = norm_input.unsqueeze(-1)
+        # norm_input = norm_input.squeeze(-1)
+        # norm_input = self.norms[count](norm_input)
+        # norm_input = norm_input.unsqueeze(-1)
 
         return norm_input
     
@@ -219,8 +220,8 @@ class EncoderLayer(nn.Module):
         x1 = self.dropout1(self.lay_norm(
                 self.reduction(x0)+
                 atten_input,count = 0)) # ! count = 0 
-        import ipdb
-        ipdb.set_trace()
+        # import ipdb
+        # ipdb.set_trace()
         ###### S only
         # x0 = self.mha_spatial(value, key_measure, atten_input)
         ###### T only
@@ -232,7 +233,7 @@ class EncoderLayer(nn.Module):
         ########################
         # border 
         ########################
-        x2 = self.dropout2(self.norm2(self.feed_forward(x1) + x1))
+        x2 = self.dropout2(self.lay_norm(self.feed_forward(x1) + x1, 1))
         return x2
 
 class Model(nn.Module):
@@ -287,6 +288,8 @@ class Model(nn.Module):
         
         batch_size, t_dim, m_dim = values.shape
         
+        # test_plot(values) # ! plot data
+
         enclayer_zero = values.unsqueeze(-1) # [ batch, T, measure, 1 ]
         values = values.unsqueeze(1)
         
@@ -299,8 +302,6 @@ class Model(nn.Module):
         #[batch, M, heads * M_unit]
         K_measure = self.key_measure_linear(enclayer_zero.transpose(1,2).reshape(batch_size,m_dim,-1))
 
-        # import ipdb
-        # ipdb.set_trace()
         
         # enclayer_in = input_transformer # ! input after conv
         enclayer_in = enclayer_zero  # ? input without conv
@@ -309,9 +310,11 @@ class Model(nn.Module):
             enclayer_in = self.layers[i](value=input_transformer,key_time=K_time,
                                         key_measure=K_measure,atten_input=enclayer_in)
         
-        out_put = enclayer_in.permute(0, 3, 1, 2) #(B, T, M, d)->(B, d, T, M)
-        out_put = self.conv2(out_put) #(B, d, T, M)->(B, 1, T, M)
-        out_put = out_put.squeeze(1) # (batch, T, M)
+        # import ipdb
+        # ipdb.set_trace()
+        # out_put = enclayer_in.permute(0, 3, 1, 2) #(B, T, M, d)->(B, d, T, M)
+        # out_put = self.conv2(out_put) #(B, d, T, M)->(B, 1, T, M)
+        out_put = enclayer_in.squeeze(-1) # (batch, T, M) # ! 直接输出
         
         x_loss = (masks*((out_put - values.squeeze(1)) ** 2)).reshape(batch_size,-1).sum(-1)/ \
                             masks.reshape(batch_size,-1).sum(-1)

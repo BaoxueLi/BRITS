@@ -31,7 +31,8 @@ Z = []
 #     Y.append(y)
 #     Z.append(int(z))
 
-content = np.load('coalmill-data-TS/data_D_small.npy',allow_pickle=True).tolist()
+# content = np.load('coalmill-data-TS/data_D_small.npy',allow_pickle=True).tolist()
+content = np.load('coalmill-data-TS/data_F_medium.npy',allow_pickle=True).tolist()
 len_content = len(content)
 
 for j in range(len_content):

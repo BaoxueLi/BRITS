@@ -11,15 +11,18 @@ from torch.utils.data import Dataset, DataLoader
 
 class MySet(Dataset):
     # 继承抽象类
-    def __init__(self, small_data):
+    def __init__(self, small_data, domain):
         super(MySet, self).__init__()
         print('Loading data......')
         st_time = time.time()
+        print('domain: {}, size: {}'.format(domain,small_data))
         # self.content = np.load('./json/data.npy',allow_pickle=True).tolist()
-        if small_data:
-            self.content = np.load('coalmill-data-TS/data_D_small.npy',allow_pickle=True).tolist()
+        if small_data == 'small':
+            self.content = np.load('coalmill-data-TS/data_{}_small.npy'.format(domain),allow_pickle=True).tolist()
+        elif small_data == 'medium':
+            self.content = np.load('coalmill-data-TS/data_{}_medium.npy'.format(domain),allow_pickle=True).tolist()
         else:
-            self.content = np.load('coalmill-data-TS/data_D.npy',allow_pickle=True).tolist()
+            self.content = np.load('coalmill-data-TS/data_{}_normal.npy'.format(domain),allow_pickle=True).tolist()
         en_time = time.time()
         print('Successful load, time cosumed: {:.2f}s'.format(en_time-st_time))
         # self.content = open('./json/json').readlines()
@@ -65,8 +68,8 @@ def collate_fn(recs):
 
     return ret_dict
 
-def get_loader(batch_size = 64, shuffle = True, small = False):
-    data_set = MySet(small_data=small)
+def get_loader(small, domain, batch_size = 64, shuffle = True):
+    data_set = MySet(small_data=small,domain=domain)
     # import ipdb
     # ipdb.set_trace()
     data_iter = DataLoader(dataset = data_set, \
